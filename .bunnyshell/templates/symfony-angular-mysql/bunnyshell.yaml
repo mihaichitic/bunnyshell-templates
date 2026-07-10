@@ -1,12 +1,19 @@
+# start of component
+# - spring
+# - angular
+# - mysql
 kind: Environment
 name: demo-books-symfony
 type: primary
+# next is components
 components:
+    # start of components
     -
+        # 1st component
         kind: Database
         name: database
         dockerCompose:
-            command: '--default-authentication-plugin=mysql_native_password'
+            command: '--default-authentication-plugin=mysql_native_password' # for mysql 8
             environment:
                 MYSQL_DATABASE: symfony
                 MYSQL_PASSWORD: symfony_pass
@@ -14,13 +21,16 @@ components:
                 MYSQL_USER: symfony_user
             image: 'mysql:8.0.29'
             ports:
-                - '3306:3306'
+                - '3306:3306' # usual port
         volumes:
             -
+                # persistance for data
                 name: database-data
                 mount: /var/lib/mysql
                 subPath: ''
+        # end of mysql component
     -
+        # nginx for the symfony app
         kind: SidecarContainer
         name: nginx
         gitRepo: 'https://github.com/bunnyshell/templates.git'
@@ -34,6 +44,7 @@ components:
             ports:
                 - '8080:8080'
     -
+        # main app
         kind: Application
         name: symfony
         gitRepo: 'https://github.com/bunnyshell/templates.git'
@@ -43,20 +54,24 @@ components:
             build:
                 context: ./components/symfony-rest-api
                 dockerfile: .docker/php/Dockerfile
-                target: dev
+                target: dev # already prepared for remote dev
             environment:
+                # see mysql environmentn variables
                 DATABASE_URL: 'mysql://symfony_user:symfony_pass@database:3306/symfony?serverVersion=8&charset=utf8mb4'
+                # see frontend component urls
                 FRONTEND_URL: 'https://{{ components.frontend.ingress.hosts[0].hostname }}'
                 PHP_MEMORY_LIMIT: '1G'
                 PHP_OPCACHE_ENABLE: '0'
                 PHP_OPCACHE_VALIDATE_TIMESTAMPS: '0'
                 RUN_PRE_RELEASE: 'true'
                 RUN_WARMUP: 'true'
-                XDEBUG_MODE: 'develop,debug'
+                XDEBUG_MODE: 'develop,debug' # already prepared for remote dev
                 XDEBUG_START_WITH_REQUEST: 'yes'
                 XDEBUG_IDE_KEY: 'PHPSTORM'
             ports:
+                # php-fpm port
                 - '9000:9000'
+                # nginx port, see pod.sidecar_container below
                 - '8080:8080'
         pod:
             init_containers: {  }
@@ -67,15 +82,14 @@ components:
                     environment: {  }
                     shared_paths:
                         -
+                            # share this folder, so nginx can serve the files of the symfony app
                             path: /var/www
                             target:
                                 path: /var/www
                                 container: '@parent'
-                            initial_contents: '@target'
+                            initial_contents: '@target' # @target = target.container = @parent = this component, symfony
                     volumes: {  }
                     shared_volumes: {  }
-                    metadata:
-                        com.bunnyshell.k8s.id: 1
         hosts:
             -
                 hostname: 'symfony-{{ env.base_domain }}'
@@ -83,6 +97,7 @@ components:
                 servicePort: 8080
         volumes:
             -
+               # faster boot on restarts
                 name: symfony-cache
                 mount: /var/www/var
                 subPath: ''
@@ -106,6 +121,7 @@ components:
             environment:
                 API_URL: 'https://{{ components.symfony.ingress.hosts[0] }}'
             labels:
+                # rely on kompose labels to control some readines probes
                 kompose.service.healthcheck.readiness.test: 'CMD sh -c "wget --no-verbose --tries=1 --spider http://127.0.0.1:8080 || exit 1"'
                 kompose.service.healthcheck.readiness.interval: 15s
                 kompose.service.healthcheck.readiness.timeout: 10s
@@ -125,16 +141,18 @@ volumes:
         type: disk
     -
         name: database-data
-        size: 1Gi
+        size: 1Gi # cloud providers usually enforce a minimum of 1Gi
         type: disk
 dev:
     symfony:
         -
             containers:
                 symfony:
+                    # you should have this profile on your machine
                     remoteDevProfile: symfony
     frontend:
         -
             containers:
                 frontend:
+                    # you should have this profile on your machine
                     remoteDevProfile: frontend
